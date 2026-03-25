@@ -7,12 +7,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
+
+// DefaultHealthServer returns a health.Server with the root service set to SERVING.
+// The returned server can be further configured before passing to Config.
+func DefaultHealthServer() *health.Server {
+	hs := health.NewServer()
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	return hs
+}
 
 // Config holds the configuration for a gRPC server.
 type Config struct {
@@ -22,8 +31,16 @@ type Config struct {
 	// Reflection enables the gRPC server reflection service.
 	Reflection bool
 
-	// Health enables the gRPC health checking service.
-	Health bool
+	// HealthServer, when set, is registered on the gRPC server.
+	// The caller retains full control over service statuses.
+	// If nil, no health service is registered.
+	HealthServer *health.Server
+
+	// ShutdownTimeout is the maximum time to wait for in-flight RPCs
+	// to complete during graceful shutdown. If zero, GracefulStop
+	// blocks indefinitely. After the timeout, the server is forcefully
+	// stopped.
+	ShutdownTimeout time.Duration
 
 	// ServerOptions are additional gRPC server options.
 	ServerOptions []grpc.ServerOption
@@ -39,8 +56,9 @@ type Config struct {
 }
 
 // Run starts a gRPC server with the given configuration and blocks until a
-// SIGINT or SIGTERM is received. It then gracefully stops the server and
-// calls OnShutdown if set.
+// SIGINT or SIGTERM is received, or the context is cancelled. It then
+// gracefully stops the server (subject to ShutdownTimeout) and calls
+// OnShutdown if set.
 func Run(ctx context.Context, cfg Config) error {
 	if cfg.Addr == "" {
 		return fmt.Errorf("grpcx/server: address is required")
@@ -65,16 +83,15 @@ func Run(ctx context.Context, cfg Config) error {
 		reflection.Register(srv)
 	}
 
-	if cfg.Health {
-		hs := health.NewServer()
-		grpc_health_v1.RegisterHealthServer(srv, hs)
-		hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	if cfg.HealthServer != nil {
+		grpc_health_v1.RegisterHealthServer(srv, cfg.HealthServer)
 	}
 
 	signals := cfg.signals
 	if signals == nil {
 		stopChan := make(chan os.Signal, 1)
 		signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(stopChan)
 		signals = stopChan
 	}
 
@@ -87,10 +104,10 @@ func Run(ctx context.Context, cfg Config) error {
 	case err = <-serveErr:
 		// Server stopped on its own (e.g. listener closed).
 	case <-signals:
-		srv.GracefulStop()
+		gracefulStop(srv, cfg.ShutdownTimeout)
 		err = nil
 	case <-ctx.Done():
-		srv.GracefulStop()
+		gracefulStop(srv, cfg.ShutdownTimeout)
 		err = ctx.Err()
 	}
 
@@ -99,4 +116,25 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	return err
+}
+
+// gracefulStop attempts a graceful shutdown within the timeout.
+// If timeout is zero, it blocks indefinitely.
+func gracefulStop(srv *grpc.Server, timeout time.Duration) {
+	if timeout == 0 {
+		srv.GracefulStop()
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		srv.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		srv.Stop()
+	}
 }

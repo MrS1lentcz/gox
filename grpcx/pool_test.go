@@ -112,6 +112,16 @@ func TestPool_Close_Empty(t *testing.T) {
 	}
 }
 
+func TestPool_Connect_AfterClose(t *testing.T) {
+	p := NewPool()
+	p.Close()
+
+	_, err := p.Connect("passthrough:///localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err == nil {
+		t.Fatal("expected error when connecting on closed pool")
+	}
+}
+
 func TestPool_Connect_DialError(t *testing.T) {
 	p := NewPool()
 	// grpc.NewClient fails when no transport credentials are set.

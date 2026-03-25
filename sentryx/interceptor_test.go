@@ -13,7 +13,6 @@ import (
 )
 
 func init() {
-	// Initialize Sentry with a noop transport so interceptors can create spans.
 	sentry.Init(sentry.ClientOptions{
 		Dsn:              "https://key@sentry.io/1",
 		EnableTracing:    true,
@@ -55,6 +54,49 @@ func TestShouldCaptureError(t *testing.T) {
 	}
 }
 
+func TestShouldCaptureError_NilError(t *testing.T) {
+	if ShouldCaptureError(nil) {
+		t.Fatal("nil error should not be captured")
+	}
+}
+
+func TestShouldCaptureError_NonStatusError(t *testing.T) {
+	if !ShouldCaptureError(fmt.Errorf("plain error")) {
+		t.Fatal("plain error (Unknown code) should be captured")
+	}
+}
+
+func TestSpanStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want sentry.SpanStatus
+	}{
+		{"nil", nil, sentry.SpanStatusOK},
+		{"InvalidArgument", status.Error(codes.InvalidArgument, ""), sentry.SpanStatusInvalidArgument},
+		{"DeadlineExceeded", status.Error(codes.DeadlineExceeded, ""), sentry.SpanStatusDeadlineExceeded},
+		{"NotFound", status.Error(codes.NotFound, ""), sentry.SpanStatusNotFound},
+		{"AlreadyExists", status.Error(codes.AlreadyExists, ""), sentry.SpanStatusAlreadyExists},
+		{"PermissionDenied", status.Error(codes.PermissionDenied, ""), sentry.SpanStatusPermissionDenied},
+		{"ResourceExhausted", status.Error(codes.ResourceExhausted, ""), sentry.SpanStatusResourceExhausted},
+		{"Aborted", status.Error(codes.Aborted, ""), sentry.SpanStatusAborted},
+		{"Unimplemented", status.Error(codes.Unimplemented, ""), sentry.SpanStatusUnimplemented},
+		{"Unavailable", status.Error(codes.Unavailable, ""), sentry.SpanStatusUnavailable},
+		{"Unauthenticated", status.Error(codes.Unauthenticated, ""), sentry.SpanStatusUnauthenticated},
+		{"Canceled", status.Error(codes.Canceled, ""), sentry.SpanStatusCanceled},
+		{"Internal", status.Error(codes.Internal, ""), sentry.SpanStatusInternalError},
+		{"Unknown", status.Error(codes.Unknown, ""), sentry.SpanStatusInternalError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := spanStatus(tt.err); got != tt.want {
+				t.Fatalf("spanStatus() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractTraceHeaders(t *testing.T) {
 	t.Run("no metadata", func(t *testing.T) {
 		st, bg := extractTraceHeaders(context.Background())
@@ -89,6 +131,44 @@ func TestExtractTraceHeaders(t *testing.T) {
 			t.Fatalf("baggage = %q, want empty", bg)
 		}
 	})
+}
+
+func TestWithErrorFilter(t *testing.T) {
+	// Custom filter that only captures NotFound.
+	filter := WithErrorFilter(func(err error) bool {
+		return status.Code(err) == codes.NotFound
+	})
+
+	interceptor := UnaryServerInterceptor(filter)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.New(nil))
+
+	// NotFound should be captured (no crash, just verifying the filter is called).
+	_, err := interceptor(ctx, "request", &grpc.UnaryServerInfo{
+		FullMethod: "/test.Service/Method",
+	}, func(ctx context.Context, req any) (any, error) {
+		return nil, status.Error(codes.NotFound, "not found")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestWithErrorFilter_Stream(t *testing.T) {
+	filter := WithErrorFilter(func(err error) bool {
+		return status.Code(err) == codes.NotFound
+	})
+
+	interceptor := StreamServerInterceptor(filter)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.New(nil))
+
+	err := interceptor(nil, &mockServerStream{ctx: ctx}, &grpc.StreamServerInfo{
+		FullMethod: "/test.Service/StreamMethod",
+	}, func(srv any, stream grpc.ServerStream) error {
+		return status.Error(codes.NotFound, "not found")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
 }
 
 func TestUnaryServerInterceptor_Success(t *testing.T) {
@@ -145,6 +225,41 @@ func TestUnaryServerInterceptor_ClientError(t *testing.T) {
 	}
 }
 
+func TestUnaryServerInterceptor_Panic(t *testing.T) {
+	interceptor := UnaryServerInterceptor()
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.New(nil))
+
+	_, err := interceptor(ctx, "request", &grpc.UnaryServerInfo{
+		FullMethod: "/test.Service/Method",
+	}, func(ctx context.Context, req any) (any, error) {
+		panic("test panic")
+	})
+
+	if err == nil {
+		t.Fatal("expected error after panic")
+	}
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected Internal, got %v", status.Code(err))
+	}
+}
+
+func TestUnaryServerInterceptor_NoMetadata(t *testing.T) {
+	interceptor := UnaryServerInterceptor()
+
+	resp, err := interceptor(context.Background(), "request", &grpc.UnaryServerInfo{
+		FullMethod: "/test.Service/Method",
+	}, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != "ok" {
+		t.Fatalf("got %v, want %q", resp, "ok")
+	}
+}
+
 // mockServerStream implements grpc.ServerStream for testing.
 type mockServerStream struct {
 	grpc.ServerStream
@@ -163,7 +278,6 @@ func TestStreamServerInterceptor_Success(t *testing.T) {
 	err := interceptor(nil, &mockServerStream{ctx: ctx}, &grpc.StreamServerInfo{
 		FullMethod: "/test.Service/StreamMethod",
 	}, func(srv any, stream grpc.ServerStream) error {
-		// Verify the stream has an enriched context.
 		if stream.Context() == ctx {
 			t.Error("expected wrapped context, got original")
 		}
@@ -190,30 +304,21 @@ func TestStreamServerInterceptor_Error(t *testing.T) {
 	}
 }
 
-func TestWrappedServerStream_Context(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "key", "value")
-	ss := &mockServerStream{ctx: context.Background()}
-	wrapped := &wrappedServerStream{ServerStream: ss, ctx: ctx}
+func TestStreamServerInterceptor_Panic(t *testing.T) {
+	interceptor := StreamServerInterceptor()
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.New(nil))
 
-	if wrapped.Context() != ctx {
-		t.Fatal("wrapped stream should return injected context")
-	}
-}
-
-func TestUnaryServerInterceptor_NoMetadata(t *testing.T) {
-	interceptor := UnaryServerInterceptor()
-
-	resp, err := interceptor(context.Background(), "request", &grpc.UnaryServerInfo{
-		FullMethod: "/test.Service/Method",
-	}, func(ctx context.Context, req any) (any, error) {
-		return "ok", nil
+	err := interceptor(nil, &mockServerStream{ctx: ctx}, &grpc.StreamServerInfo{
+		FullMethod: "/test.Service/StreamMethod",
+	}, func(srv any, stream grpc.ServerStream) error {
+		panic("stream panic")
 	})
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error after panic")
 	}
-	if resp != "ok" {
-		t.Fatalf("got %v, want %q", resp, "ok")
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected Internal, got %v", status.Code(err))
 	}
 }
 
@@ -231,15 +336,14 @@ func TestStreamServerInterceptor_NoMetadata(t *testing.T) {
 	}
 }
 
-func TestShouldCaptureError_NilError(t *testing.T) {
-	if ShouldCaptureError(nil) {
-		t.Fatal("nil error should not be captured")
-	}
-}
+type ctxKey struct{}
 
-func TestShouldCaptureError_NonStatusError(t *testing.T) {
-	// A plain error gets codes.Unknown from status.Code.
-	if !ShouldCaptureError(fmt.Errorf("plain error")) {
-		t.Fatal("plain error (Unknown code) should be captured")
+func TestWrappedServerStream_Context(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ctxKey{}, "value")
+	ss := &mockServerStream{ctx: context.Background()}
+	wrapped := &wrappedServerStream{ServerStream: ss, ctx: ctx}
+
+	if wrapped.Context() != ctx {
+		t.Fatal("wrapped stream should return injected context")
 	}
 }
