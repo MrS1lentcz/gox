@@ -75,7 +75,7 @@ func Run(ctx context.Context, cfg Config) error {
 	srv := grpc.NewServer(cfg.ServerOptions...)
 
 	if err = cfg.RegisterServices(srv); err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return fmt.Errorf("grpcx/server: failed to register services: %w", err)
 	}
 

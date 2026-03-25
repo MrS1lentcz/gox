@@ -21,7 +21,7 @@ func freePort(t *testing.T) string {
 		t.Fatalf("failed to get free port: %v", err)
 	}
 	addr := l.Addr().String()
-	l.Close()
+	_ = l.Close()
 	return addr
 }
 
@@ -177,7 +177,7 @@ func TestRun_HealthServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := grpc_health_v1.NewHealthClient(conn)
 	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{})
@@ -284,7 +284,7 @@ func TestRun_ListenError(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 	addr := l.Addr().String()
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	err = Run(context.Background(), Config{
 		Addr: addr,
@@ -360,21 +360,18 @@ func TestRun_ServerStopsBeforeSignal(t *testing.T) {
 		done <- Run(context.Background(), Config{
 			Addr: addr,
 			RegisterServices: func(s *grpc.Server) error {
-				// Stop the server shortly after Serve starts,
-				// causing Serve to return before any signal/context fires.
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					s.Stop()
 				}()
 				return nil
 			},
-			signals: make(<-chan os.Signal), // never fires
+			signals: make(<-chan os.Signal),
 		})
 	}()
 
 	select {
 	case err := <-done:
-		// Serve returns nil after Stop(), so no error expected.
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -400,20 +397,17 @@ func TestGracefulStop_TimeoutForcesStop(t *testing.T) {
 	}
 	addr := l.Addr().String()
 
-	// Use a unary interceptor that blocks until the context is cancelled,
-	// simulating a stuck RPC.
 	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(
 		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-			<-ctx.Done() // blocks until Stop() cancels active RPCs
+			<-ctx.Done()
 			return nil, ctx.Err()
 		},
 	))
 
-	// Register health service so the RPC actually reaches the interceptor.
 	hs := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(srv, hs)
 
-	go srv.Serve(l)
+	go func() { _ = srv.Serve(l) }()
 	waitForServer(t, addr)
 
 	conn, err := grpc.NewClient(addr,
@@ -423,18 +417,14 @@ func TestGracefulStop_TimeoutForcesStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	// Start a health check call that will block in the interceptor.
 	go func() {
-		grpc_health_v1.NewHealthClient(conn).Check(context.Background(), &grpc_health_v1.HealthCheckRequest{})
+		_, _ = grpc_health_v1.NewHealthClient(conn).Check(context.Background(), &grpc_health_v1.HealthCheckRequest{})
 	}()
 
-	// Give time for the RPC to reach the interceptor.
 	time.Sleep(100 * time.Millisecond)
 
-	// GracefulStop blocks because the RPC is in-flight.
-	// The timeout forces srv.Stop(), which cancels the RPC context.
 	gracefulStop(srv, 100*time.Millisecond)
 }
 
@@ -444,7 +434,7 @@ func waitForServer(t *testing.T, addr string) {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

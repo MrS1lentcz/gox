@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	sentry.Init(sentry.ClientOptions{
+	_ = sentry.Init(sentry.ClientOptions{
 		Dsn:              "https://key@sentry.io/1",
 		EnableTracing:    true,
 		TracesSampleRate: 1.0,

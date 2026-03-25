@@ -38,12 +38,12 @@ func TestPool_Connect_CreatesConnection(t *testing.T) {
 	if p.Len() != 1 {
 		t.Fatalf("expected pool size 1, got %d", p.Len())
 	}
-	p.Close()
+	_ = p.Close()
 }
 
 func TestPool_Connect_ReusesConnection(t *testing.T) {
 	p := NewPool()
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
 	conn1, err := p.Connect("passthrough:///localhost:0", opts)
@@ -64,7 +64,7 @@ func TestPool_Connect_ReusesConnection(t *testing.T) {
 
 func TestPool_Connect_DifferentAddresses(t *testing.T) {
 	p := NewPool()
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
 	conn1, _ := p.Connect("passthrough:///localhost:0", opts)
@@ -80,7 +80,7 @@ func TestPool_Connect_DifferentAddresses(t *testing.T) {
 func TestPool_Close_ClearsPool(t *testing.T) {
 	p := NewPool()
 	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
-	p.Connect("passthrough:///localhost:0", opts)
+	_, _ = p.Connect("passthrough:///localhost:0", opts)
 
 	if err := p.Close(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -95,7 +95,7 @@ func TestPool_Close_Error(t *testing.T) {
 	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
 	conn, _ := p.Connect("passthrough:///localhost:0", opts)
 	// Close the conn directly so Pool.Close will encounter an error.
-	conn.Close()
+	_ = conn.Close()
 
 	if err := p.Close(); err == nil {
 		t.Fatal("expected error when closing already-closed connection")
@@ -114,7 +114,7 @@ func TestPool_Close_Empty(t *testing.T) {
 
 func TestPool_Connect_AfterClose(t *testing.T) {
 	p := NewPool()
-	p.Close()
+	_ = p.Close()
 
 	_, err := p.Connect("passthrough:///localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err == nil {
@@ -136,7 +136,7 @@ func TestPool_Connect_DialError(t *testing.T) {
 
 func TestPool_ConcurrentAccess(t *testing.T) {
 	p := NewPool()
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
 	var wg sync.WaitGroup
