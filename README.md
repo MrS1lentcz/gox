@@ -1,5 +1,9 @@
 # gox
 
+[![CI](https://github.com/MrS1lentcz/gox/actions/workflows/ci.yml/badge.svg)](https://github.com/MrS1lentcz/gox/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/MrS1lentcz/gox/branch/main/graph/badge.svg)](https://codecov.io/gh/MrS1lentcz/gox)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mrs1lentcz/gox.svg)](https://pkg.go.dev/github.com/mrs1lentcz/gox)
+
 Lightweight Go utility packages for building gRPC services with Sentry integration.
 
 ## Installation
