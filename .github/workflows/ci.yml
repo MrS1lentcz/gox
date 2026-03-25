@@ -56,9 +56,9 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.1.6
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.1.6
+          golangci-lint run ./...
 
       - name: staticcheck
         run: |
@@ -80,8 +80,9 @@ jobs:
           govulncheck ./...
 
       - name: Trivy
-        uses: aquasecurity/trivy-action@0.31.0
-        with:
-          scan-type: fs
-          scanners: vuln,secret
-          severity: HIGH,CRITICAL
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+          trivy fs --scanners vuln,secret --severity HIGH,CRITICAL .
