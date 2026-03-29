@@ -110,10 +110,10 @@ func MakeMigrations(ctx context.Context, cfg Config) (string, error) {
 			return "", fmt.Errorf("entx: open connection for OnConnect: %w", err)
 		}
 		if err := cfg.OnConnect(ctx, db); err != nil {
-			db.Close()
+			_ = db.Close()
 			return "", fmt.Errorf("entx: on connect: %w", err)
 		}
-		db.Close()
+		_ = db.Close()
 	}
 
 	sqlContent, err := generateSchema(ctx, cfg.Driver, dsn, cfg.Tables)
@@ -149,7 +149,7 @@ func defaultAllocatePort() (string, error) {
 		return "", fmt.Errorf("entx: allocate free port: %w", err)
 	}
 	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
+	_ = l.Close()
 	return fmt.Sprintf("%d", port), nil
 }
 
@@ -223,7 +223,7 @@ func defaultPingDatabase(ctx context.Context, driver, dsn string, timeout time.D
 		db, err := sql.Open(driver, dsn)
 		if err == nil {
 			err = db.PingContext(ctx)
-			db.Close()
+			_ = db.Close()
 			if err == nil {
 				return nil
 			}
@@ -246,7 +246,7 @@ func defaultGenerateSchema(ctx context.Context, driver, dsn string, tables []*sc
 	if err != nil {
 		return "", fmt.Errorf("entx: open connection: %w", err)
 	}
-	defer drv.Close()
+	defer func() { _ = drv.Close() }()
 
 	var buf strings.Builder
 	writeDriver := &schema.WriteDriver{Writer: &buf, Driver: drv}

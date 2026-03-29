@@ -295,7 +295,7 @@ func TestMakeMigrationsSequenceIncrement(t *testing.T) {
 
 	dir := t.TempDir()
 	// Create first migration.
-	os.WriteFile(filepath.Join(dir, "0003_existing_20260101000000.sql"), []byte("x"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "0003_existing_20260101000000.sql"), []byte("x"), 0o644)
 
 	path, err := MakeMigrations(context.Background(), Postgres17(dir, "next", testTables))
 	if err != nil {
@@ -320,7 +320,7 @@ func TestMakeMigrationsDestroyCalledOnError(t *testing.T) {
 	destroyed := false
 	destroyContainer = func(_ string) { destroyed = true }
 
-	MakeMigrations(context.Background(), Postgres17(t.TempDir(), "", testTables))
+	_, _ = MakeMigrations(context.Background(), Postgres17(t.TempDir(), "", testTables))
 	if !destroyed {
 		t.Fatal("expected destroyContainer to be called")
 	}
@@ -400,10 +400,10 @@ func TestNextSequence(t *testing.T) {
 
 	t.Run("existing migrations", func(t *testing.T) {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "0001_20260101000000.sql"), []byte("x"), 0o644)
-		os.WriteFile(filepath.Join(dir, "0002_add_users_20260102000000.sql"), []byte("x"), 0o644)
-		os.WriteFile(filepath.Join(dir, "0005_init_20260103000000.sql"), []byte("x"), 0o644)
-		os.WriteFile(filepath.Join(dir, "readme.md"), []byte("x"), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "0001_20260101000000.sql"), []byte("x"), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "0002_add_users_20260102000000.sql"), []byte("x"), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "0005_init_20260103000000.sql"), []byte("x"), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "readme.md"), []byte("x"), 0o644)
 
 		seq, err := nextSequence(dir)
 		if err != nil {
@@ -507,8 +507,8 @@ func TestDefaultGenerateSchemaCreateError(t *testing.T) {
 func TestNextSequenceReadDirError(t *testing.T) {
 	dir := t.TempDir()
 	// Remove read permission to trigger a ReadDir error that isn't NotExist.
-	os.Chmod(dir, 0o000)
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	_ = os.Chmod(dir, 0o000)
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	_, err := nextSequence(dir)
 	if err == nil || !strings.Contains(err.Error(), "read migrations dir") {
@@ -529,8 +529,8 @@ func TestMakeMigrationsNextSequenceError(t *testing.T) {
 	dir := t.TempDir()
 	// MkdirAll will succeed, but then remove read permission so nextSequence's
 	// ReadDir fails with a permission error (not NotExist).
-	os.Chmod(dir, 0o000)
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	_ = os.Chmod(dir, 0o000)
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	cfg := Postgres17(dir, "", testTables)
 	_, err := MakeMigrations(context.Background(), cfg)
@@ -551,8 +551,8 @@ func TestMakeMigrationsWriteFileError(t *testing.T) {
 
 	dir := t.TempDir()
 	// Make dir read-only so WriteFile fails (but MkdirAll and ReadDir succeed).
-	os.Chmod(dir, 0o555)
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	_ = os.Chmod(dir, 0o555)
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	cfg := Postgres17(dir, "", testTables)
 	_, err := MakeMigrations(context.Background(), cfg)
@@ -573,7 +573,7 @@ func TestMakeMigrationsMkdirError(t *testing.T) {
 
 	// Use a path that can't be created (file as parent).
 	tmpFile := filepath.Join(t.TempDir(), "blockfile")
-	os.WriteFile(tmpFile, []byte("x"), 0o644)
+	_ = os.WriteFile(tmpFile, []byte("x"), 0o644)
 	impossibleDir := filepath.Join(tmpFile, "subdir")
 
 	cfg := Postgres17(impossibleDir, "", testTables)
