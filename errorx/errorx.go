@@ -5,12 +5,53 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mrs1lentcz/gox/sentryx"
 
 	"github.com/getsentry/sentry-go"
 )
+
+var (
+	globalReporter Reporter
+	reporterOnce   sync.Once
+)
+
+// SetReporter sets the global error reporter. Only the first call takes effect.
+func SetReporter(r Reporter) {
+	reporterOnce.Do(func() {
+		globalReporter = r
+	})
+}
+
+// MustInit parses the config string, creates a Reporter, and sets it as the
+// global reporter. It calls log.Fatalf on any error — intended for use during
+// application bootstrap.
+func MustInit(config string) {
+	r, err := New(config)
+	if err != nil {
+		log.Fatalf("errorx: %v", err)
+	}
+	SetReporter(r)
+}
+
+// ReportError reports an error using the global reporter.
+// Falls back to stderr if SetReporter was never called.
+func ReportError(err error) {
+	if globalReporter != nil {
+		globalReporter.Report(err)
+		return
+	}
+	log.Printf("error: %v", err)
+}
+
+// CloseReporter flushes and closes the global reporter.
+func CloseReporter() {
+	if globalReporter != nil {
+		globalReporter.Close()
+	}
+}
 
 // Reporter reports errors to a configured backend.
 type Reporter interface {

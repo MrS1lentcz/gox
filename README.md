@@ -105,7 +105,17 @@ The interceptors:
 Parses a config string and returns a `Reporter` that sends errors either to Sentry or stderr:
 
 ```go
-// From environment variable: "stderr" or "sentry:<dsn>"
+// Quick bootstrap — parses config, calls log.Fatal on error:
+errorx.MustInit(os.Getenv("ERROR_LOGGER"))
+defer errorx.CloseReporter()
+
+// Report errors anywhere in the app:
+errorx.ReportError(err)
+```
+
+Or use the `Reporter` interface directly:
+
+```go
 reporter, err := errorx.New(os.Getenv("ERROR_LOGGER"))
 if err != nil {
     log.Fatal(err)
