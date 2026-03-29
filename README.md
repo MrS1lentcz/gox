@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/MrS1lentcz/gox/branch/main/graph/badge.svg)](https://codecov.io/gh/MrS1lentcz/gox)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrs1lentcz/gox.svg)](https://pkg.go.dev/github.com/mrs1lentcz/gox)
 
-Lightweight Go utility packages for building gRPC services with Sentry integration.
+Lightweight Go extension packages for [gRPC](https://grpc.io/), [Sentry](https://sentry.io/), and [Ent](https://entgo.io/) (+[Atlas](https://atlasgo.io/)).
 
 ## Installation
 
@@ -99,6 +99,21 @@ The interceptors:
 - Recover panics and report them to Sentry
 - Report server-side errors (`Internal`, `Unknown`, `Unavailable`, `DataLoss`, `ResourceExhausted`) by default
 - Map gRPC status codes to proper Sentry span statuses
+
+### `errorx` — configurable error reporting
+
+Parses a config string and returns a `Reporter` that sends errors either to Sentry or stderr:
+
+```go
+// From environment variable: "stderr" or "sentry:<dsn>"
+reporter, err := errorx.New(os.Getenv("ERROR_LOGGER"))
+if err != nil {
+    log.Fatal(err)
+}
+defer reporter.Close()
+
+reporter.Report(err)
+```
 
 **Custom error filter:**
 
