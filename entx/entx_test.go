@@ -482,7 +482,7 @@ func TestDefaultOpenDatabaseSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 }
 
 func TestDefaultGenerateSchemaOpenError(t *testing.T) {
