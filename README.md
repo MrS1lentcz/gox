@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/MrS1lentcz/gox/branch/main/graph/badge.svg)](https://codecov.io/gh/MrS1lentcz/gox)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrs1lentcz/gox.svg)](https://pkg.go.dev/github.com/mrs1lentcz/gox)
 
-Lightweight Go extension packages for [gRPC](https://grpc.io/), [Sentry](https://sentry.io/), and [Ent](https://entgo.io/) (+[Atlas](https://atlasgo.io/)).
+Lightweight Go extension packages for people who are building services using [gRPC](https://grpc.io/), [Sentry](https://sentry.io/), and [Ent](https://entgo.io/) (+[Atlas](https://atlasgo.io/)). Docker required for migrations.
 
 ## Installation
 
@@ -136,6 +136,79 @@ sentryx.UnaryServerInterceptor(
 )
 ```
 
+### `entx` — automated ent migration generation
+
+Generates SQL migration files by diffing your ent schema against an empty database running in an ephemeral Docker container. Docker is required.
+
+**Quick start with Postgres:**
+
+```go
+import (
+    "context"
+
+    _ "github.com/lib/pq"
+
+    "github.com/mrs1lentcz/gox/entx"
+    "myproject/ent/migrate"
+)
+
+func main() {
+    path, err := entx.MakeMigrations(context.Background(),
+        entx.Postgres18("ent/migrate/migrations", "add_users", migrate.Tables),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Migration written to", path)
+}
+```
+
+This will:
+1. Ask the OS for a free port
+2. Start an ephemeral `postgres:18-alpine` container on that port
+3. Connect, diff your ent schema against the empty database
+4. Write a timestamped SQL file (e.g. `0001_add_users_20260329120000.sql`)
+5. Remove the container
+
+**Built-in helpers:**
+
+| Helper | Image |
+|---|---|
+| `entx.Postgres17(dir, name, tables)` | `postgres:17-alpine` |
+| `entx.Postgres18(dir, name, tables)` | `postgres:18-alpine` |
+| `entx.Postgres(version, dir, name, tables)` | `postgres:<version>-alpine` |
+| `entx.MySQL84(dir, name, tables)` | `mysql:8.4` |
+| `entx.MySQL9(dir, name, tables)` | `mysql:9` |
+| `entx.MySQL(version, dir, name, tables)` | `mysql:<version>` |
+
+**Custom database setup:**
+
+```go
+entx.MakeMigrations(ctx, entx.Config{
+    Driver: "postgres",
+    Image:  "postgres:16-alpine",
+    Dir:    "migrations",
+    Name:   "init",
+    Tables: migrate.Tables,
+    Setup: func(hostPort string) ([]entx.Env, entx.ContainerPort, entx.DSN) {
+        return []entx.Env{
+                "POSTGRES_USER=myuser",
+                "POSTGRES_PASSWORD=mypass",
+                "POSTGRES_DB=mydb",
+            },
+            "5432",
+            entx.DSN("postgres://myuser:mypass@localhost:" + hostPort + "/mydb?sslmode=disable")
+    },
+    OnConnect: func(ctx context.Context, db *sql.DB) error {
+        // Run any post-startup SQL (e.g. CREATE EXTENSION).
+        _, err := db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+        return err
+    },
+})
+```
+
 ## License
+
+MIT
 
 MIT
