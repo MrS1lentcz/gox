@@ -3,6 +3,7 @@
 [![CI](https://github.com/MrS1lentcz/gox/actions/workflows/ci.yml/badge.svg)](https://github.com/MrS1lentcz/gox/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/MrS1lentcz/gox/branch/main/graph/badge.svg)](https://codecov.io/gh/MrS1lentcz/gox)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrs1lentcz/gox.svg)](https://pkg.go.dev/github.com/mrs1lentcz/gox)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Lightweight Go extension packages for people who are building services using [gRPC](https://grpc.io/), [Sentry](https://sentry.io/), and [Ent](https://entgo.io/) (+[Atlas](https://atlasgo.io/)). Docker required for migrations.
 
@@ -208,7 +209,5 @@ entx.MakeMigrations(ctx, entx.Config{
 ```
 
 ## License
-
-MIT
 
 MIT
